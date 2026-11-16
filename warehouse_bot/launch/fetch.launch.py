@@ -25,8 +25,9 @@ def generate_launch_description():
         DeclareLaunchArgument('use_sim_time', default_value='true'),
         DeclareLaunchArgument('layout_file', default_value='',
                               description='Layout YAML ("" = installed default)'),
-        DeclareLaunchArgument('web_host', default_value='0.0.0.0',
-                              description='Address the order page listens on'),
+        DeclareLaunchArgument('web_host', default_value='127.0.0.1',
+                              description='Address the order page listens on '
+                                          '(0.0.0.0 = whole network; the page has no login)'),
         DeclareLaunchArgument('web_port', default_value='8088',
                               description='Port of the order page (http://localhost:<port>)'),
         DeclareLaunchArgument('confirm_with_camera', default_value='true',

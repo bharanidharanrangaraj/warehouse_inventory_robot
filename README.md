@@ -96,8 +96,9 @@ warehouse_bot/                   nodes, robot, world, map, web page, launch file
   test/test_arm.py, test/test_retrieval.py, test/test_inventory_logic.py
 
 docs/                            screenshots used in this README
-tools/web_relay_windows.py       order page relay for the development laptop (see 4.3)
-run_warehouse.bat                one-click start on the development laptop (see 4.3)
+tools/run_in_wsl.sh              copy + build + launch inside WSL (used by run_warehouse.bat)
+tools/web_relay_windows.py       order page relay from Windows into WSL (see 4.3)
+run_warehouse.bat                one-click start on Windows 11 + WSL2 (see 4.3)
 ```
 
 ## 2. Architecture (retrieval mode)
@@ -159,12 +160,13 @@ sudo apt install -y \
   python3-opencv python3-yaml python3-colcon-common-extensions python3-rosdep python3-pytest unzip
 ```
 
-**3.2 Create the workspace and copy the code:**
+**3.2 Create the workspace and get the code:**
 
 ```bash
 mkdir -p ~/warehouse_ws/src
 cd ~/warehouse_ws/src
-unzip ~/Downloads/warehouse_inventory_robot.zip     # gives warehouse_inventory_robot/
+git clone https://github.com/bharanidharanrangaraj/warehouse_inventory_robot.git
+# or, from a zip: unzip ~/Downloads/warehouse_inventory_robot.zip
 ```
 
 **3.3 Build:**
@@ -218,7 +220,7 @@ ros2 service call /warehouse/restock std_srvs/srv/Trigger
 
 `product` accepts `capacitor`, `Resistors`, `transformer`, `diode`, a rack id (`D`) or a rack name.
 
-Useful launch arguments: `web_port:=9000`, `web_host:=127.0.0.1`, `rviz:=false`, `gui:=false`. The Gazebo window and RViz together slow the simulation down noticeably (see section 9). For quicker deliveries, launch with `rviz:=false`. With `gui:=false`, everything runs headless and you watch it on the order page's live view. For step-by-step runs, start `world`, `navigation` and `inventory` as in 4.2, then `ros2 launch warehouse_bot fetch.launch.py`.
+Useful launch arguments: `web_port:=9000`, `rviz:=false`, `gui:=false`, `web_host:=0.0.0.0`. By default the order page only accepts connections from the same computer. `web_host:=0.0.0.0` lets phones and other PCs on your network open it, but the page has no login, so only do that on a network you trust. The Gazebo window and RViz together slow the simulation down noticeably (see section 9). For quicker deliveries, launch with `rviz:=false`. With `gui:=false`, everything runs headless and you watch it on the order page's live view. For step-by-step runs, start `world`, `navigation` and `inventory` as in 4.2, then `ros2 launch warehouse_bot fetch.launch.py`.
 
 ### 4.2 Audit mode
 
@@ -243,19 +245,36 @@ To run the audit again without restarting, either let it finish (it ends on the 
 
 ### 4.3 On Windows (WSL2)
 
-**Any Windows 11 PC with WSL2.** Install Ubuntu 22.04 in WSL and follow sections 3 and 4.1 inside it. Gazebo and RViz open as normal windows through WSLg. WSL forwards `localhost`, so the order page opens at **http://localhost:8088** in a Windows browser.
+On a Windows 11 PC, run everything inside WSL2. Gazebo and RViz open as normal windows through WSLg.
 
-**The development laptop.** Here a firewall blocks network traffic between Windows and WSL, so the setup above can't reach the order page. Instead, double-click **`run_warehouse.bat`**. It:
+1. Install **Ubuntu 22.04** from the Microsoft Store.
+2. Inside Ubuntu, install ROS 2 Humble and the packages from section 3.1.
+3. Choose one way to run it:
 
-- syncs this folder into WSL (`~/warehouse_ws`) and rebuilds;
+**Option A: from a Windows clone, with one click.** Clone the repository anywhere on Windows and double-click **`run_warehouse.bat`**. It:
+
+- copies the project into `~/warehouse_ws` inside WSL and builds it there (`tools/run_in_wsl.sh`);
 - starts everything in retrieval mode;
 - opens the order page at **http://localhost:8088**.
 
-For audit mode, run `run_warehouse.bat mode:=audit`.
+Pass launch arguments after the name, for example `run_warehouse.bat mode:=audit` or `run_warehouse.bat rviz:=false`. Press Ctrl+C in its window to stop.
 
-The `.bat` calls a helper script, `~/run_warehouse.sh`, that exists only inside that laptop's WSL. On any other PC, use the steps above.
+| Setting (Windows environment variable) | Default | Use |
+|---|---|---|
+| `WAREHOUSE_WSL_DISTRO` | `Ubuntu-22.04` | the WSL distribution to use (`wsl -l -v` lists them) |
+| `WAREHOUSE_NO_BROWSER` | not set | `1` = don't open the browser automatically |
 
-How the order page gets through the firewall: `tools/web_relay_windows.py` listens on `127.0.0.1:8088` on Windows. It passes each request through the stdin/stdout pipes of a `wsl.exe` child process (`web_stdio_proxy`) to `web_server`, which listens on `127.0.0.2:8089` inside WSL. The `.bat` starts and stops the relay for you.
+Inside WSL, `WAREHOUSE_WS` picks another workspace than `~/warehouse_ws`. The script only replaces a copy it made itself, so a clone you put in `~/warehouse_ws/src` yourself is never overwritten. It stops with a message instead. Machine-specific settings, such as a DDS profile, can go in `~/warehouse_env.sh`, which the script sources if it exists.
+
+**Option B: entirely inside Ubuntu.** Follow sections 3 and 4.1 in an Ubuntu terminal. WSL forwards `localhost`, so the order page opens at **http://localhost:8088** in a Windows browser.
+
+**How the one-click start reaches the order page.** `run_warehouse.bat` starts `tools/web_relay_windows.py`, which needs Python for Windows. The relay:
+
+1. listens on `127.0.0.1:8088` on Windows;
+2. passes each request through the stdin/stdout pipes of a `wsl.exe` child process (`web_stdio_proxy`);
+3. reaches `web_server` on `127.0.0.2:8089` inside WSL.
+
+Because no network traffic crosses between Windows and WSL, this also works on PCs whose firewall blocks it. Without Python for Windows, the `.bat` falls back to WSL's own localhost forwarding.
 
 ### 4.4 What you should see
 
@@ -378,7 +397,10 @@ Useful parameters:
 | `libcurl ... fuel.ignitionrobotics.org ... timed out` in the log | Gazebo's Insert-tab model browser can't reach the internet (firewall). The lookup gives up after about 3.5 min. It comes from the GUI (gzclient); the simulation itself (gzserver) is not affected. `world.launch.py` already disables the classic model database. |
 | Tags appear as grey squares | Gazebo can't find the models. Rebuild, then run `source install/setup.bash`. Check `ls $(ros2 pkg prefix warehouse_bot)/share/warehouse_bot/models`. |
 | Order page says "Robot software starting" | `fetch_manager` waits for Nav2. Orders placed now are queued and start once Nav2 is active. |
-| Order page doesn't load | Check the terminal for `Order page: http://...`. On the WSL laptop, start through `run_warehouse.bat` so the relay runs. If the port is taken, use `web_port:=<free port>`. |
+| Order page doesn't load | Check the terminal for `Order page: http://...`. On Windows, start through `run_warehouse.bat` so the relay runs (section 4.3). If the port is taken, use `web_port:=<free port>`. |
+| `run_warehouse.bat` says the WSL distribution was not found | Run `wsl -l -v` and set `WAREHOUSE_WSL_DISTRO` to the name of your Ubuntu 22.04 distribution. |
+| `run_in_wsl.sh` stops with "already exists and was not created by this script" | You already have a copy in `~/warehouse_ws/src/warehouse_inventory_robot`. Move it away, or set `WAREHOUSE_WS=~/another_ws` inside WSL (for example in `~/warehouse_env.sh`). |
+| `$'\r': command not found` from a script | The checkout has Windows line endings. The repository's `.gitattributes` prevents this for new clones. For an old clone, run `git rm --cached -r . && git reset --hard` (this discards uncommitted changes). |
 | Order fails with "Camera check failed" | The robot couldn't see any label of that rack. Watch the "Scanner Camera" panel in RViz. If needed, use `confirm_with_camera:=false` (fetch.launch.py) or `require_confirmation: false` in the layout file. |
 | Component stays on the shelf although the arm moved | `item_handler` needs the `gazebo_ros_state` world plugin. Regenerate the world (section 6) and check that `ros2 service list` shows `/gazebo/set_entity_state`. |
 | Scanner says "no camera frames" | Run `ros2 topic list \| grep image`. If the topic name differs, use `image_topic:=<name>`. The scanner falls back to simulated RFID automatically. |

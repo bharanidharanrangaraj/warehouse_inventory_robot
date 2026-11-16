@@ -1,0 +1,30 @@
+# colcon output, if you build with the repository itself as the workspace root
+/build/
+/install/
+/log/
+
+# Python caches and tooling (compiled files also embed local absolute paths)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local run output and per-machine files
+warehouse_results/
+*.log
+*.zip
+.claude/settings.local.json

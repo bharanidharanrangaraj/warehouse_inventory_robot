@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Order-page relay for a Windows PC that runs the robot inside WSL.
 
-On this PC a firewall blocks TCP between Windows and WSL, so a Windows browser
-cannot open the order page served inside WSL. This relay listens on
+Some PCs have a firewall that blocks TCP between Windows and WSL, so a Windows
+browser cannot open the order page served inside WSL. This relay listens on
 http://127.0.0.1:8088 on Windows and forwards every request through one
 long-running `wsl.exe` child process (its stdin/stdout pipes are not network
 traffic) to warehouse_bot's web_stdio_proxy, which calls the ROS web server
-inside WSL.
+inside WSL (127.0.0.2:8089, as started by tools/run_in_wsl.sh).
 
     python tools\\web_relay_windows.py --open-browser
 
@@ -28,15 +28,21 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PID_FILE = os.path.join(tempfile.gettempdir(), 'warehouse_web_relay.pid')
+MAX_BODY = 64 * 1024      # the order page only POSTs tiny JSON bodies
+# web_stdio_proxy only uses the Python standard library, so it runs straight from this
+# checkout - no ROS environment or built workspace needed on the WSL side.
+PROXY_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         'warehouse_bot', 'warehouse_bot')
 
 
 class WslPipe:
     """One persistent `wsl.exe ... web_stdio_proxy` process; requests are serialised."""
 
     def __init__(self, distro: str, user: str, host: str, port: int):
-        inner = ('source ~/warehouse_env.sh >/dev/null 2>&1; '
-                 f'exec python3 -u -m warehouse_bot.web_stdio_proxy --host {host} --port {port}')
-        self.cmd = ['wsl.exe', '-d', distro, '-u', user, '--', 'bash', '-c', inner]
+        # --cd takes the Windows path; -e runs python3 directly (no shell, so no quoting issues)
+        self.cmd = ['wsl.exe', '-d', distro] + (['-u', user] if user else []) + [
+            '--cd', PROXY_DIR, '-e', 'python3', '-u', 'web_stdio_proxy.py',
+            '--host', host, '--port', str(port)]
         self.proc = None
         self.lock = threading.Lock()
         self.next_id = 0
@@ -91,7 +97,13 @@ def make_handler(pipe: WslPipe):
             pass
 
         def _relay(self, method: str) -> None:
-            length = int(self.headers.get('Content-Length') or 0)
+            try:
+                length = int(self.headers.get('Content-Length') or 0)
+            except ValueError:
+                length = -1
+            if length < 0 or length > MAX_BODY:
+                self.send_error(413, 'Request body too large')
+                return
             body = self.rfile.read(length) if length else b''
             code, ctype, data = pipe.request(method, self.path, self.headers.get('Content-Type', ''),
                                              body)
@@ -151,8 +163,9 @@ def main() -> None:
     ap.add_argument('--stop', action='store_true',
                     help='stop a running relay (used by run_warehouse.bat) and exit')
     ap.add_argument('--port', type=int, default=8088, help='Windows port (default 8088)')
-    ap.add_argument('--distro', default='Ubuntu-22.04')
-    ap.add_argument('--user', default='ros')
+    ap.add_argument('--distro', default=os.environ.get('WAREHOUSE_WSL_DISTRO', 'Ubuntu-22.04'),
+                    help='WSL distribution (default Ubuntu-22.04)')
+    ap.add_argument('--user', default='', help='WSL user (default: the distribution default user)')
     ap.add_argument('--wsl-host', default='127.0.0.2', help='web_server address inside WSL')
     ap.add_argument('--wsl-port', type=int, default=8089, help='web_server port inside WSL')
     ap.add_argument('--open-browser', action='store_true')

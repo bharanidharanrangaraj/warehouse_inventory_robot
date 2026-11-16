@@ -1,0 +1,14 @@
+# Text files use LF in the repository and in every checkout. The code runs on Linux, and
+# run_warehouse.bat copies a Windows checkout into WSL, where CRLF breaks bash scripts.
+* text=auto eol=lf
+
+# Windows batch files need CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files: never convert line endings or show text diffs.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pgm binary
+*.zip binary

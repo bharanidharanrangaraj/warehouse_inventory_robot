@@ -16,7 +16,8 @@ Subscribes /warehouse/fetch_status, /warehouse/stock, /warehouse/current_zone,
 
 Parameters
   layout_file  path to warehouse_layout.yaml ('' = installed default)
-  host         address to listen on (default 0.0.0.0)
+  host         address to listen on (default 127.0.0.1 = this computer only; 0.0.0.0 opens
+               the page to the whole network - it has no login, so only on a trusted network)
   port         TCP port (default 8088)  -> open http://localhost:8088
   web_dir      folder with index.html ('' = installed share/warehouse_bot/web)
 
@@ -45,6 +46,7 @@ from warehouse_bot.layout import PACKAGE_NAME, WarehouseLayout, resolve_layout_p
 
 STOCK_QOS = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 FRESH_S = {'fetch_manager': 3.0, 'item_handler': 5.0, 'localisation': 3.0}
+MAX_BODY = 64 * 1024      # POST bodies are tiny JSON; refuse anything bigger
 
 
 def order_dict(o) -> dict:
@@ -59,7 +61,7 @@ class WebBridge(Node):
     def __init__(self):
         super().__init__('web_server')
         self.declare_parameter('layout_file', '')
-        self.declare_parameter('host', '0.0.0.0')
+        self.declare_parameter('host', '127.0.0.1')
         self.declare_parameter('port', 8088)
         self.declare_parameter('web_dir', '')
 
@@ -204,8 +206,11 @@ def make_handler(bridge: WebBridge):
             self._send(code, json.dumps(data).encode())
 
         def _body(self) -> dict:
-            length = int(self.headers.get('Content-Length') or 0)
-            if not length:
+            try:
+                length = int(self.headers.get('Content-Length') or 0)
+            except ValueError:
+                return {}
+            if length <= 0 or length > MAX_BODY:
                 return {}
             try:
                 return json.loads(self.rfile.read(length) or b'{}')
