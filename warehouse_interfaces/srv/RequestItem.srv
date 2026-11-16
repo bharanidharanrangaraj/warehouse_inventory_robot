@@ -1,0 +1,8 @@
+# Order one unit of a component. Served by fetch_manager on /warehouse/request_item.
+# product accepts the product id ("diode"), its name ("Diode"/"Diodes"),
+# the rack id ("D") or the rack name.
+string product
+---
+bool accepted
+string order_id
+string message

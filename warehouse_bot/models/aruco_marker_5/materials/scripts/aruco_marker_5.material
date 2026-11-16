@@ -1,0 +1,15 @@
+material ArucoMarker5
+{
+  technique
+  {
+    pass
+    {
+      lighting off
+      texture_unit
+      {
+        texture aruco_marker_5.png
+        filtering none
+      }
+    }
+  }
+}

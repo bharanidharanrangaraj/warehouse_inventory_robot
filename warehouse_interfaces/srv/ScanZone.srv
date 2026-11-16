@@ -1,0 +1,7 @@
+# Ask the scanner to read every tag visible from the robot's current pose.
+string zone_id           # zone being audited, e.g. "A"
+float32 duration         # scan window in seconds; <= 0 uses the node default
+---
+bool success
+string message
+int32[] detected_ids

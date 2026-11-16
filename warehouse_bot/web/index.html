@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Warehouse Order Station</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='9' width='26' height='18' rx='4' fill='%232563eb'/%3E%3Ccircle cx='11' cy='18' r='3' fill='white'/%3E%3Ccircle cx='21' cy='18' r='3' fill='white'/%3E%3Crect x='14' y='3' width='4' height='7' fill='%232563eb'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f3f4f6; --surface: #ffffff; --surface-2: #f8f9fb; --ink: #15171c; --muted: #5d6573;
+    --line: #e1e4ea; --accent: #2563eb; --accent-ink: #ffffff; --accent-soft: #e6eeff;
+    --ok: #15803d; --ok-soft: #e3f5e9; --warn: #b45309; --warn-soft: #fdf1df;
+    --bad: #b91c1c; --bad-soft: #fde7e7; --floor: #eef0f3; --wall: #9aa1ad; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1014; --surface: #161920; --surface-2: #1b1f27; --ink: #e7e9ee; --muted: #9aa3b2;
+      --line: #282d38; --accent: #5b8def; --accent-ink: #0b0d12; --accent-soft: #1b2741;
+      --ok: #4ade80; --ok-soft: #13291c; --warn: #fbbf24; --warn-soft: #2c2312;
+      --bad: #f87171; --bad-soft: #2f1717; --floor: #1d2129; --wall: #5d6574; --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body { font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  button { font: inherit; }
+  .muted { color: var(--muted); }
+
+  header.top {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    padding: 16px 24px; background: var(--surface); border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand h1 { margin: 0; font-size: 19px; letter-spacing: -.01em; }
+  .brand p { margin: 0; font-size: 13px; color: var(--muted); }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 999px;
+    font-size: 13px; font-weight: 600; background: var(--surface-2); border: 1px solid var(--line);
+  }
+  .chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .chip.ok { color: var(--ok); background: var(--ok-soft); border-color: transparent; }
+  .chip.ok::before { background: var(--ok); }
+  .chip.warn { color: var(--warn); background: var(--warn-soft); border-color: transparent; }
+  .chip.warn::before { background: var(--warn); }
+  .chip.bad { color: var(--bad); background: var(--bad-soft); border-color: transparent; }
+  .chip.bad::before { background: var(--bad); }
+  .chip.busy { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+  .chip.busy::before { background: var(--accent); animation: blink 1.2s infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+
+  main.grid {
+    display: grid; gap: 16px; padding: 16px 24px 32px; max-width: 1360px; margin: 0 auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-areas: "products live" "delivery live" "orders map";
+  }
+  @media (max-width: 960px) {
+    main.grid { grid-template-columns: minmax(0, 1fr); padding: 16px;
+      grid-template-areas: "products" "delivery" "live" "map" "orders"; }
+    header.top { padding: 14px 16px; }
+  }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+           padding: 18px; box-shadow: var(--shadow); min-width: 0; }
+  .panel h2 { margin: 0 0 14px; font-size: 15px; display: flex; justify-content: space-between;
+              align-items: baseline; gap: 8px; }
+  .panel h2 .muted { font-weight: 500; font-size: 13px; }
+  .products { grid-area: products; } .delivery { grid-area: delivery; }
+  .map { grid-area: map; } .orders { grid-area: orders; } .live { grid-area: live; }
+
+  /* live view */
+  .tabs { display: inline-flex; gap: 4px; padding: 3px; border-radius: 9px; background: var(--surface-2);
+          border: 1px solid var(--line); }
+  .tab { border: 0; background: none; color: var(--muted); font-size: 13px; font-weight: 600;
+         padding: 4px 10px; border-radius: 6px; cursor: pointer; }
+  .tab.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+  .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .viewport { position: relative; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden;
+              background: #0b0d12; }
+  .viewport img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .viewport p { position: absolute; inset: 0; display: grid; place-items: center; margin: 0;
+                color: #9aa3b2; font-size: 14px; }
+  .viewport .badge-live { position: absolute; left: 10px; top: 10px; padding: 3px 8px; border-radius: 6px;
+                          background: rgba(0,0,0,.55); color: #fff; font-size: 12px; font-weight: 650;
+                          display: inline-flex; align-items: center; gap: 6px; }
+  .badge-live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #ef4444;
+                        animation: blink 1.2s infinite; }
+  .live .caption { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+  .viewport [hidden] { display: none; }
+
+  /* product cards */
+  .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 520px) { .cards { grid-template-columns: minmax(0, 1fr); } }
+  .card {
+    display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 4px 14px; align-items: center;
+    padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2);
+    border-left: 5px solid var(--c);
+  }
+  .card .icon { width: 64px; height: 64px; grid-row: span 2; }
+  .card h3 { margin: 0; font-size: 16px; }
+  .card .rack { margin: 0; font-size: 13px; color: var(--muted); }
+  .card .stockline { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between;
+                     gap: 10px; margin-top: 8px; }
+  .pips { display: flex; gap: 4px; }
+  .pip { width: 14px; height: 14px; border-radius: 4px; background: var(--line); }
+  .pip.full { background: var(--c); }
+  .pip.held { background: repeating-linear-gradient(45deg, var(--c) 0 3px, transparent 3px 6px); opacity: .7; }
+  .stocktext { font-size: 13px; color: var(--muted); flex: 1; }
+  .order-btn {
+    border: 0; border-radius: 9px; padding: 8px 16px; font-weight: 650; cursor: pointer;
+    background: var(--accent); color: var(--accent-ink); white-space: nowrap;
+  }
+  .order-btn:hover:not(:disabled) { filter: brightness(1.08); }
+  .order-btn:disabled { background: var(--line); color: var(--muted); cursor: not-allowed; }
+  .order-btn:focus-visible, .ghost:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  /* current delivery */
+  .now { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+  .now .icon { width: 52px; height: 52px; flex: none; }
+  .now h3 { margin: 0; font-size: 17px; }
+  .now p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+  .steps { list-style: none; padding: 0; margin: 0; display: grid;
+           grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+  .steps li { position: relative; padding-top: 22px; font-size: 12.5px; color: var(--muted); text-align: center; }
+  .steps li::before { content: ""; position: absolute; top: 4px; left: 0; right: 0; height: 6px;
+                      border-radius: 3px; background: var(--line); }
+  .steps li.done { color: var(--ink); }
+  .steps li.done::before { background: var(--ok); }
+  .steps li.active { color: var(--accent); font-weight: 650; }
+  .steps li.active::before { background: var(--accent); animation: blink 1.2s infinite; }
+  .banner { margin-top: 14px; padding: 10px 12px; border-radius: 10px; font-size: 14px; }
+  .banner.ok { background: var(--ok-soft); color: var(--ok); }
+  .banner.bad { background: var(--bad-soft); color: var(--bad); }
+  .empty { color: var(--muted); font-size: 14px; margin: 0; }
+
+  /* map */
+  #map { width: 100%; height: auto; display: block; border-radius: 10px; background: var(--floor); }
+  #map text { font: 600 0.26px system-ui, sans-serif; fill: var(--ink); paint-order: stroke;
+              stroke: var(--floor); stroke-width: 0.07px; stroke-linejoin: round; }
+  #map .zone { fill-opacity: 0.13; stroke-width: 0.03; stroke-dasharray: 0.08 0.06; }
+  #map .kind-DROP { fill: var(--accent); stroke: var(--accent); }
+  #map .kind-DOCK { fill: var(--ok); stroke: var(--ok); }
+  #map .zone.target { stroke: var(--accent); stroke-width: 0.07; stroke-dasharray: none;
+                      animation: pulse 1.4s ease-in-out infinite; }
+  #map .walls { fill: none; stroke: var(--wall); stroke-width: 0.12; }
+  #map .obstacle { fill: var(--wall); fill-opacity: 0.7; }
+  #map .counter { fill: var(--accent); }
+  #map .dock { fill: none; stroke: var(--ok); stroke-width: 0.05; }
+  #map .robot-body { fill: var(--ink); }
+  #map #cargo { stroke: var(--surface); stroke-width: 0.03; }
+  @keyframes pulse { 50% { stroke-opacity: .25; } }
+  #map .trail { fill: none; stroke: var(--accent); stroke-width: 0.04; stroke-opacity: .45;
+                stroke-linecap: round; stroke-linejoin: round; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+  /* orders */
+  .lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 520px) { .lists { grid-template-columns: minmax(0, 1fr); } }
+  .lists h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .olist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .olist li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 2px 10px; align-items: center;
+              padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-2); font-size: 14px; }
+  .olist .oid { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12.5px; }
+  .olist .what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .olist .note { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); }
+  .badge { font-size: 12px; font-weight: 650; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+           background: var(--accent-soft); color: var(--accent); }
+  .badge.QUEUED { background: var(--surface); color: var(--muted); border: 1px solid var(--line); }
+  .badge.DELIVERED { background: var(--ok-soft); color: var(--ok); }
+  .badge.FAILED { background: var(--bad-soft); color: var(--bad); }
+  .counter-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+                 margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 14px; }
+  .ghost { border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); border-radius: 9px;
+           padding: 7px 14px; font-weight: 600; cursor: pointer; }
+  .ghost:disabled { color: var(--muted); cursor: not-allowed; }
+
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0;
+           max-width: min(560px, calc(100vw - 32px)); padding: 12px 16px; border-radius: 12px;
+           background: var(--ink); color: var(--bg); font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.25);
+           transition: opacity .2s, transform .2s; pointer-events: none; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  #toast.bad { background: var(--bad); color: #fff; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg width="38" height="38" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="9" width="26" height="18" rx="4" fill="#2563eb"/><circle cx="11" cy="18" r="3" fill="#fff"/><circle cx="21" cy="18" r="3" fill="#fff"/><rect x="14" y="3" width="4" height="7" fill="#2563eb"/></svg>
+    <div><h1>Warehouse Order Station</h1><p id="whname">Choose a component and the robot brings it to the user counter</p></div>
+  </div>
+  <div class="chips"><span id="conn" class="chip warn">Connecting…</span><span id="rstate" class="chip">Robot: –</span></div>
+</header>
+
+<main class="grid">
+  <section class="panel products" aria-labelledby="h-products">
+    <h2 id="h-products">Order a component <span class="muted">one unit per request</span></h2>
+    <div id="cards" class="cards"></div>
+  </section>
+
+  <section class="panel delivery" aria-labelledby="h-delivery">
+    <h2 id="h-delivery">Current delivery <span id="elapsed" class="muted"></span></h2>
+    <div id="current"><p class="empty">Waiting for the robot…</p></div>
+  </section>
+
+  <section class="panel live" aria-labelledby="h-live">
+    <h2 id="h-live">Live view
+      <span class="tabs" role="tablist">
+        <button class="tab active" type="button" role="tab" aria-selected="true" data-cam="overview">Warehouse</button>
+        <button class="tab" type="button" role="tab" aria-selected="false" data-cam="robot">Robot camera</button>
+      </span>
+    </h2>
+    <div class="viewport">
+      <p id="livemsg">Waiting for the camera…</p>
+      <img id="liveimg" alt="Live view from the warehouse simulation" hidden>
+      <span class="badge-live" id="livebadge" hidden>LIVE</span>
+    </div>
+    <p class="caption" id="livecap">Overview camera above the south wall · updates every second</p>
+  </section>
+
+  <section class="panel map" aria-labelledby="h-map">
+    <h2 id="h-map">Live map <span id="where" class="muted"></span></h2>
+    <svg id="map" role="img" aria-label="Warehouse map with the robot's live position"></svg>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section class="panel orders" aria-labelledby="h-orders">
+    <h2 id="h-orders">Orders</h2>
+    <div class="lists">
+      <div><h3>Waiting</h3><ol id="queue" class="olist"></ol></div>
+      <div><h3>Recent</h3><ol id="history" class="olist"></ol></div>
+    </div>
+    <div class="counter-row">
+      <span id="counter" class="muted">User counter: –</span>
+      <button id="restock" class="ghost" type="button">Restock all shelves</button>
+    </div>
+  </section>
+</main>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+const ICONS = {
+  capacitor: '<svg viewBox="0 0 64 64" aria-hidden="true"><line x1="26" y1="50" x2="26" y2="61" stroke="#9aa0a6" stroke-width="2.5"/><line x1="38" y1="50" x2="38" y2="61" stroke="#9aa0a6" stroke-width="2.5"/><rect x="16" y="6" width="32" height="46" rx="7" fill="#1f4bb4"/><rect x="38" y="10" width="6" height="38" rx="2" fill="#dfe6f5"/><ellipse cx="32" cy="9" rx="13" ry="3" fill="#c9ccd3"/></svg>',
+  resistor: '<svg viewBox="0 0 64 64" aria-hidden="true"><line x1="2" y1="32" x2="62" y2="32" stroke="#9aa0a6" stroke-width="2.5"/><rect x="13" y="21" width="38" height="22" rx="10" fill="#d8c08a"/><rect x="20" y="21" width="4" height="22" fill="#6b3a17"/><rect x="27" y="21" width="4" height="22" fill="#111"/><rect x="34" y="21" width="4" height="22" fill="#c81e1e"/><rect x="43" y="21" width="3" height="22" fill="#c9a227"/></svg>',
+  transformer: '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="7" y="51" width="50" height="6" rx="1.5" fill="#33363c"/><rect x="11" y="10" width="42" height="41" rx="2" fill="#5c5f66"/><g stroke="#4a4d53" stroke-width="1.2"><line x1="11" y1="17" x2="53" y2="17"/><line x1="11" y1="44" x2="53" y2="44"/></g><rect x="21" y="14" width="22" height="33" rx="3" fill="#c66a1c"/><g stroke="#a3520f" stroke-width="1.4"><line x1="21" y1="20" x2="43" y2="20"/><line x1="21" y1="25" x2="43" y2="25"/><line x1="21" y1="30" x2="43" y2="30"/><line x1="21" y1="35" x2="43" y2="35"/><line x1="21" y1="40" x2="43" y2="40"/></g></svg>',
+  diode: '<svg viewBox="0 0 64 64" aria-hidden="true"><line x1="2" y1="32" x2="62" y2="32" stroke="#9aa0a6" stroke-width="2.5"/><rect x="14" y="23" width="36" height="18" rx="8" fill="#1b1c1f"/><rect x="38" y="23" width="6" height="18" fill="#d5d7dc"/></svg>',
+  box: '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="12" y="14" width="40" height="38" rx="4" fill="#8a8f99"/></svg>',
+};
+const STEPS = [["TO_RACK", "To rack"], ["CONFIRMING", "Check label"], ["PICKING", "Pick up"],
+               ["TO_USER", "To counter"], ["HANDING_OVER", "Hand over"]];
+const STATE_LABEL = { QUEUED: "Waiting", TO_RACK: "To rack", CONFIRMING: "Checking", PICKING: "Picking",
+  TO_USER: "On its way", HANDING_OVER: "Handing over", DELIVERED: "Delivered", FAILED: "Failed" };
+const ROBOT_LABEL = { STARTING: ["Starting up", "warn"], IDLE: ["Ready", "ok"], BUSY: ["Delivering", "busy"],
+  RETURNING: ["Returning to dock", "busy"], OFFLINE: ["Offline", "bad"] };
+const RESERVING = new Set(["QUEUED", "TO_RACK", "CONFIRMING", "PICKING"]);
+
+let layout = null, status = null, products = {}, trail = [], pending = new Set();
+let lastDone = { id: null, at: 0 }, firstStatus = true;   // "delivered" banner bookkeeping
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const rgb = (c) => `rgb(${c.map((v) => Math.round(v * 255)).join(",")})`;
+const fmtDur = (s) => { s = Math.max(0, Math.round(s || 0)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`; };
+const clock = (t) => t ? new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+
+async function api(path, body) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 9000);
+  try {
+    const res = await fetch(path, body === undefined ? { signal: ctl.signal, cache: "no-store" } :
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctl.signal });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok && res.status >= 500 && data.error) throw new Error(data.error);
+    return data;
+  } finally { clearTimeout(timer); }
+}
+
+let toastTimer = null;
+function toast(msg, bad = false) {
+  const t = $("toast");
+  t.textContent = msg; t.className = "show" + (bad ? " bad" : "");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.className = bad ? "bad" : ""; }, 4500);
+}
+
+/* ---------------- product cards ---------------- */
+function buildCards() {
+  $("cards").innerHTML = layout.products.map((p) => `
+    <article class="card" style="--c:${rgb(p.color)}" id="card-${esc(p.id)}">
+      <div class="icon">${ICONS[p.shape] || ICONS.box}</div>
+      <h3>${esc(p.name)}</h3>
+      <p class="rack">Rack ${esc(p.rack_id)} · ${esc(p.rack_name)}</p>
+      <div class="stockline">
+        <div class="pips" aria-hidden="true"></div>
+        <span class="stocktext">–</span>
+        <button class="order-btn" type="button" data-product="${esc(p.id)}" aria-label="Request one ${esc(p.name)}">Request</button>
+      </div>
+    </article>`).join("");
+  document.querySelectorAll(".order-btn").forEach((b) => b.addEventListener("click", () => order(b.dataset.product)));
+}
+
+function updateCards() {
+  const online = status && status.robot.state !== "OFFLINE";
+  const active = [...(status?.queue || []), ...(status?.current ? [status.current] : [])];
+  for (const p of layout.products) {
+    const card = $(`card-${p.id}`);
+    const s = (status?.stock || []).find((x) => x.product === p.id) || { available: null, capacity: p.units };
+    const held = active.filter((o) => o.product === p.id && RESERVING.has(o.state)).length;
+    const shelf = s.available ?? s.capacity;
+    const free = Math.max(0, shelf - held);
+    card.querySelector(".pips").innerHTML = Array.from({ length: s.capacity }, (_, i) =>
+      `<span class="pip ${i < free ? "full" : i < shelf ? "held" : ""}"></span>`).join("");
+    let text = s.available === null ? `${s.capacity} per shelf` : `${shelf} of ${s.capacity} on the shelf`;
+    if (held) text += ` · ${held} ordered`;
+    card.querySelector(".stocktext").textContent = text;
+    const btn = card.querySelector(".order-btn");
+    btn.disabled = !online || free <= 0 || pending.has(p.id);
+    btn.textContent = pending.has(p.id) ? "Sending…" : free <= 0 && online ? "Out of stock" : "Request";
+  }
+}
+
+async function order(pid) {
+  pending.add(pid); updateCards();
+  try {
+    const r = await api("/api/order", { product: pid });
+    toast(r.message || (r.accepted ? "Order placed" : "Order refused"), !r.accepted);
+  } catch (e) {
+    toast("Could not reach the robot: " + e.message, true);
+  } finally {
+    pending.delete(pid); poll();
+  }
+}
+
+/* ---------------- current delivery ---------------- */
+function renderCurrent() {
+  const cur = status?.current;
+  const last = status?.history?.[0];
+  let html = "";
+  if (cur) {
+    const p = products[cur.product] || {};
+    const idx = STEPS.findIndex(([k]) => k === cur.state);
+    html = `<div class="now"><div class="icon">${ICONS[p.shape] || ICONS.box}</div>
+      <div><h3>${esc(cur.order_id)} · ${esc(cur.product_name)} from rack ${esc(cur.rack_id)}</h3>
+      <p>${esc(cur.message)}</p></div></div>
+      <ol class="steps">${STEPS.map(([k, label], i) =>
+        `<li class="${i < idx ? "done" : i === idx ? "active" : ""}">${label}</li>`).join("")}</ol>`;
+    $("elapsed").textContent = fmtDur(cur.duration);
+  } else {
+    $("elapsed").textContent = "";
+    const msg = status ? status.robot.message : "Connecting to the robot…";
+    html = `<p class="empty">No delivery in progress. ${esc(msg)}.</p>`;
+  }
+  if (last && last.order_id !== lastDone.id) lastDone = { id: last.order_id, at: firstStatus ? 0 : Date.now() };
+  if (last && Date.now() - lastDone.at < 30000) {
+    html += last.state === "DELIVERED"
+      ? `<div class="banner ok">${esc(last.order_id)}: ${esc(last.message)} (${fmtDur(last.duration)})</div>`
+      : `<div class="banner bad">${esc(last.order_id)} failed: ${esc(last.message)}</div>`;
+  }
+  $("current").innerHTML = html;
+}
+
+/* ---------------- order lists ---------------- */
+function row(o, showTime) {
+  const note = o.state === "FAILED" ? `<span class="note">${esc(o.message)}</span>` : "";
+  const t = showTime ? (o.state === "DELIVERED" || o.state === "FAILED" ? fmtDur(o.duration) : "") : esc(o.message);
+  return `<li><span class="oid">${esc(o.order_id)}</span><span class="what">${esc(o.product_name)} <span class="muted">· ${showTime ? clock(o.requested_at) : "rack " + esc(o.rack_id)}</span></span>
+    <span class="badge ${esc(o.state)}" title="${esc(t)}">${STATE_LABEL[o.state] || esc(o.state)}</span>${note}</li>`;
+}
+function renderLists() {
+  const q = status?.queue || [], h = status?.history || [];
+  $("queue").innerHTML = q.length ? q.map((o) => row(o, false)).join("") : '<li class="empty" style="border:0;background:none;padding:0">Nothing waiting</li>';
+  $("history").innerHTML = h.length ? h.slice(0, 6).map((o) => row(o, true)).join("") : '<li class="empty" style="border:0;background:none;padding:0">No orders yet</li>';
+  const n = status?.delivered_count || 0;
+  $("counter").textContent = `User counter: ${n} item${n === 1 ? "" : "s"} waiting for pick-up`;
+  $("restock").disabled = !status || !status.online.item_handler || !!status.carried_item;
+}
+
+/* ---------------- map ---------------- */
+function pts(corners) { return corners.map(([x, y]) => `${x.toFixed(3)},${(-y).toFixed(3)}`).join(" "); }
+function centre(corners) {
+  const n = corners.length; return [corners.reduce((a, c) => a + c[0], 0) / n, corners.reduce((a, c) => a + c[1], 0) / n];
+}
+function buildMap() {
+  const r = layout.room, m = 0.35;
+  const svg = $("map");
+  svg.setAttribute("viewBox", `${r.min_x - m} ${-(r.max_y + m)} ${r.max_x - r.min_x + 2 * m} ${r.max_y - r.min_y + 2 * m}`);
+  const rackColor = Object.fromEntries(layout.racks.map((k) => [k.id, rgb(k.color)]));
+  let s = `<rect class="walls" x="${r.min_x}" y="${-r.max_y}" width="${r.max_x - r.min_x}" height="${r.max_y - r.min_y}"/>`;
+  for (const z of layout.zones) {
+    const col = z.kind === "RACK" ? `fill="${rackColor[z.id]}" stroke="${rackColor[z.id]}"` : "";
+    s += `<polygon id="zone-${z.id}" class="zone kind-${z.kind}" points="${pts(z.corners)}" ${col}/>`;
+  }
+  for (const o of layout.obstacles) s += `<polygon class="obstacle" points="${pts(o.corners)}"/>`;
+  for (const k of layout.racks) {
+    s += `<polygon points="${pts(k.corners)}" fill="${rgb(k.color)}"/>`;
+    const [cx, cy] = centre(k.corners);
+    const north = cy > 0;
+    s += `<text x="${cx}" y="${-(cy + (north ? 0.62 : -0.8))}" text-anchor="middle">${esc(k.id)} · ${esc(k.name)}</text>`;
+  }
+  s += `<polygon class="counter" points="${pts(layout.counter.corners)}"/>`;
+  const [ux, uy] = centre(layout.counter.corners);
+  s += `<text x="${ux - 0.05}" y="${-(uy + 0.62)}" text-anchor="end">User counter</text>`;
+  const d = layout.dock;
+  s += `<rect class="dock" x="${d.x - 0.3}" y="${-d.y - 0.3}" width="0.6" height="0.6" rx="0.08"/>`;
+  s += `<text x="${d.x}" y="${-d.y + 0.62}" text-anchor="middle">Dock</text>`;
+  s += `<polyline id="trail" class="trail" points=""/>`;
+  s += `<g id="robot" style="display:none"><circle class="robot-body" r="0.2"/><path class="robot-body" d="M0.3,0 L0.06,0.13 L0.06,-0.13 Z"/>
+        <rect id="cargo" x="-0.11" y="-0.11" width="0.22" height="0.22" rx="0.04" fill="#d97706" style="display:none"/></g>`;
+  svg.innerHTML = s;
+  $("legend").innerHTML = layout.products.map((p) => `<span><i style="background:${rgb(p.color)}"></i>${esc(p.rack_id)} ${esc(p.rack_name)}</span>`).join("")
+    + '<span><i style="background:var(--accent)"></i>User counter</span><span><i style="background:var(--ink);border-radius:50%"></i>Robot</span>';
+}
+function updateMap() {
+  if (!status) return;
+  const rb = status.robot, g = $("robot");
+  document.querySelectorAll("#map .zone").forEach((z) => z.classList.remove("target"));
+  const cur = status.current;
+  if (cur) {
+    const target = ["TO_USER", "HANDING_OVER"].includes(cur.state) ? "DROP" : cur.rack_id;
+    $(`zone-${target}`)?.classList.add("target");
+  } else if (rb.state === "RETURNING") $("zone-DOCK")?.classList.add("target");
+  if (rb.x === null) { g.style.display = "none"; $("where").textContent = ""; return; }
+  g.style.display = "";
+  g.setAttribute("transform", `translate(${rb.x},${-rb.y}) rotate(${(-rb.yaw * 180) / Math.PI})`);
+  const carried = status.carried_item;
+  const cargo = $("cargo");
+  cargo.style.display = carried ? "" : "none";
+  if (carried) {
+    const rack = carried.split("_")[1];
+    const p = layout.products.find((x) => x.rack_id === rack);
+    if (p) cargo.setAttribute("fill", rgb(p.color));
+  }
+  const last = trail[trail.length - 1];
+  if (!last || Math.hypot(last[0] - rb.x, last[1] - rb.y) > 0.05) { trail.push([rb.x, rb.y]); if (trail.length > 400) trail.shift(); }
+  $("trail").setAttribute("points", trail.map(([x, y]) => `${x},${-y}`).join(" "));
+  $("where").textContent = rb.zone ? `robot in ${rb.zone_name || rb.zone}` : "robot in the aisle";
+}
+
+/* ---------------- header ---------------- */
+function updateHeader(error) {
+  const conn = $("conn"), rs = $("rstate");
+  if (error) { conn.className = "chip bad"; conn.textContent = "Order page offline"; }
+  else if (status.robot.state === "OFFLINE") { conn.className = "chip warn"; conn.textContent = "Robot software starting"; }
+  else { conn.className = "chip ok"; conn.textContent = "Robot online"; }
+  const [label, cls] = ROBOT_LABEL[status?.robot.state] || ["–", ""];
+  rs.className = "chip " + (error ? "" : cls);
+  rs.textContent = "Robot: " + (error ? "–" : label);
+}
+
+/* ---------------- polling ---------------- */
+let pollTimer = null;
+async function poll() {
+  clearTimeout(pollTimer);
+  try {
+    if (!layout) {
+      const l = await api("/api/layout");
+      if (!l.products) throw new Error(l.error || "no layout");
+      layout = l;
+      products = Object.fromEntries(layout.products.map((p) => [p.id, p]));
+      if (layout.name) $("whname").textContent = layout.name + " · the robot brings your component to the user counter";
+      buildCards(); buildMap();
+    }
+    const s = await api("/api/status");
+    if (!s.robot) throw new Error(s.error || "no status");
+    status = s;
+    updateHeader(false); updateCards(); renderCurrent(); renderLists(); updateMap();
+    firstStatus = false;
+  } catch (e) {
+    if (status) status.robot.state = "OFFLINE";
+    updateHeader(true);
+    if (layout) updateCards();
+  }
+  pollTimer = setTimeout(poll, 1000);
+}
+
+/* ---------------- live view ---------------- */
+const CAPTIONS = { overview: "Overview camera above the south wall · updates every second",
+                   robot: "The rover's front camera · it reads the rack labels with this" };
+let cam = "overview", liveTimer = null;
+function refreshLive() {
+  clearTimeout(liveTimer);
+  const want = cam, img = new Image();
+  img.onload = () => {
+    if (want === cam) {
+      const el = $("liveimg");
+      if (el.src.startsWith("blob:")) URL.revokeObjectURL(el.src);
+      el.src = img.src; el.hidden = false; $("livemsg").hidden = true; $("livebadge").hidden = false;
+    }
+    liveTimer = setTimeout(refreshLive, want === "robot" ? 700 : 1200);
+  };
+  img.onerror = () => {
+    if (want === cam) { $("livemsg").hidden = false; $("livebadge").hidden = true;
+      $("livemsg").textContent = "Waiting for the camera… (is the simulation running?)"; }
+    liveTimer = setTimeout(refreshLive, 3000);
+  };
+  img.src = `/api/camera/${cam}.jpg?t=${Date.now()}`;
+}
+document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => {
+  cam = t.dataset.cam;
+  document.querySelectorAll(".tab").forEach((x) => { x.classList.toggle("active", x === t);
+    x.setAttribute("aria-selected", String(x === t)); });
+  $("livecap").textContent = CAPTIONS[cam];
+  refreshLive();
+}));
+refreshLive();
+
+$("restock").addEventListener("click", async () => {
+  $("restock").disabled = true;
+  try { const r = await api("/api/restock", {}); toast(r.message || "Done", !r.success); }
+  catch (e) { toast("Restock failed: " + e.message, true); }
+  poll();
+});
+poll();
+</script>
+</body>
+</html>

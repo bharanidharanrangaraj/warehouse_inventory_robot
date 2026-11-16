@@ -1,0 +1,7 @@
+# Take one unit off a rack shelf and put it on the robot (simulated gripper).
+# Served by item_handler on /warehouse/pick_item.
+string rack_id
+---
+bool success
+string item_name        # Gazebo model that is now carried
+string message

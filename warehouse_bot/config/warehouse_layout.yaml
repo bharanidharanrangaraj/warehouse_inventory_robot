@@ -1,0 +1,145 @@
+# =============================================================================
+#  Warehouse layout - the single source of truth for the whole project
+# =============================================================================
+#  Everything is derived from this file:
+#    * worlds/warehouse.world        (Gazebo world: walls, racks, tags, components, pallets)
+#    * maps/warehouse_map.pgm/.yaml  (Nav2 occupancy map)
+#    * zone rectangles + scan poses  (zone_detector, mission/fetch managers, RViz)
+#    * the orderable products        (fetch_manager, item_handler, web page)
+#    * the expected inventory        (inventory_manager)
+#
+#  After editing, regenerate the world and map:
+#    ros2 run warehouse_bot generate_world --package-dir ~/warehouse_ws/src/warehouse_bot
+#    colcon build --packages-select warehouse_bot
+#
+#  Frames: x points east, y points north, yaw in radians (CCW from +x).
+# =============================================================================
+
+warehouse:
+  name: "Smart Components Warehouse"
+  room: {min_x: -5.0, max_x: 5.0, min_y: -4.0, max_y: 4.0}
+  wall_thickness: 0.15
+  wall_height: 1.0
+  map_resolution: 0.05          # metres per map pixel
+
+scan:
+  standoff: 0.80                # robot centre -> rack face at the scan pose (m)
+  zone_depth: 1.30              # how far a zone reaches out from its rack (m)
+  zone_margin: 0.20             # zone extends this far past each rack end (m)
+  marker_size: 0.18             # tag plate edge incl. white border (m)
+  marker_height: 0.18           # tag centre height - inside the camera view
+  aruco_dictionary: DICT_4X4_50
+
+# Charging dock = start and end of every mission (robot spawns here)
+dock: {x: -4.0, y: -3.0, yaw: 0.0}
+
+# Racks: length runs along the rack's own x axis, depth along its y axis.
+# face: -1 -> tags/scan side is the rack's local -y side, +1 -> local +y side.
+# product: what a user can order from this rack (retrieval mode).
+#   units = pickable component models on the bottom shelf (the shelf stock)
+#   shape = how the component looks in Gazebo: capacitor | resistor | transformer | diode | box
+# slots: ArUco bin labels PHYSICALLY on the rack in the simulated world (ground truth).
+racks:
+  - id: A
+    name: "Capacitors"
+    pose: {x: -2.0, y: 2.5, yaw: 0.0}
+    size: {length: 1.2, depth: 0.5, height: 1.2}
+    face: -1
+    color: [0.95, 0.55, 0.10]
+    product: {id: capacitor, name: "Capacitor", units: 3, shape: capacitor}
+    slots:
+      - {marker_id: 0, offset: -0.28}
+      - {marker_id: 1, offset: 0.00}
+      - {marker_id: 2, offset: 0.28}
+
+  - id: B
+    name: "Resistors"
+    pose: {x: 1.0, y: 2.5, yaw: 0.0}
+    size: {length: 1.2, depth: 0.5, height: 1.2}
+    face: -1
+    color: [0.20, 0.55, 0.90]
+    product: {id: resistor, name: "Resistor", units: 3, shape: resistor}
+    slots:
+      - {marker_id: 3, offset: -0.28}
+      - {marker_id: 4, offset: 0.00}
+      # marker 5 belongs here but is deliberately absent  -> MISSING
+
+  - id: C
+    name: "Transformers"
+    pose: {x: -1.0, y: -2.5, yaw: 0.0}
+    size: {length: 1.2, depth: 0.5, height: 1.2}
+    face: 1
+    color: [0.30, 0.75, 0.35]
+    product: {id: transformer, name: "Transformer", units: 3, shape: transformer}
+    slots:
+      - {marker_id: 6, offset: -0.28}
+      - {marker_id: 7, offset: 0.00}
+      - {marker_id: 11, offset: 0.28}   # belongs on rack D       -> MISPLACED
+
+  - id: D
+    name: "Diodes"
+    pose: {x: 2.5, y: -2.5, yaw: 0.0}
+    size: {length: 1.2, depth: 0.5, height: 1.2}
+    face: 1
+    color: [0.65, 0.35, 0.85]
+    product: {id: diode, name: "Diode", units: 3, shape: diode}
+    slots:
+      - {marker_id: 9, offset: -0.28}
+      - {marker_id: 10, offset: 0.00}
+      - {marker_id: 20, offset: 0.28}   # tag not in the catalogue -> UNKNOWN
+
+# The user counter: retrieval mode delivers ordered components here, and the
+# audit relocates flagged items here. The robot approaches from the table's local -x side.
+drop_station:
+  name: "User counter"
+  pose: {x: 4.55, y: 0.0, yaw: 0.0}
+  size: {x: 0.40, y: 1.0, z: 0.45}  # depth, width, height; delivery spots = those the arm reaches
+  standoff: 0.75                    # robot centre -> counter edge when it arrives (Nav2 goal)
+  color: [0.15, 0.45, 0.85]
+
+# Static obstacles the planner has to route around
+obstacles:
+  - name: pallet_stack
+    pose: {x: -0.6, y: 0.3, yaw: 0.35}
+    size: {x: 0.8, y: 0.6, z: 0.6}
+    color: [0.60, 0.42, 0.20]
+  - name: support_pillar
+    pose: {x: 2.0, y: 0.0, yaw: 0.0}
+    size: {x: 0.3, y: 0.3, z: 1.0}
+    color: [0.95, 0.80, 0.10]
+
+# Expected inventory (what the stock records say). One tag per stock bin.
+catalog:
+  - {marker_id: 0,  sku: CAP-EL-100U,   name: "Electrolytic capacitor 100 uF 25 V", zone: A, quantity: 200}
+  - {marker_id: 1,  sku: CAP-CER-100N,  name: "Ceramic capacitor 100 nF 50 V",      zone: A, quantity: 500}
+  - {marker_id: 2,  sku: CAP-TA-10U,    name: "Tantalum capacitor 10 uF 16 V",      zone: A, quantity: 150}
+  - {marker_id: 3,  sku: RES-1K-025W,   name: "Resistor 1 kOhm 1/4 W",              zone: B, quantity: 1000}
+  - {marker_id: 4,  sku: RES-10K-025W,  name: "Resistor 10 kOhm 1/4 W",             zone: B, quantity: 1000}
+  - {marker_id: 5,  sku: RES-220R-025W, name: "Resistor 220 Ohm 1/4 W",             zone: B, quantity: 800}
+  - {marker_id: 6,  sku: TRF-230-12V,   name: "Step-down transformer 230-12 V 1 A", zone: C, quantity: 25}
+  - {marker_id: 7,  sku: TRF-6-0-6V,    name: "Centre-tap transformer 6-0-6 V",     zone: C, quantity: 30}
+  - {marker_id: 9,  sku: DIO-1N4007,    name: "Rectifier diode 1N4007",             zone: D, quantity: 600}
+  - {marker_id: 10, sku: DIO-1N4148,    name: "Signal diode 1N4148",                zone: D, quantity: 800}
+  - {marker_id: 11, sku: DIO-ZEN-5V1,   name: "Zener diode 5.1 V",                  zone: D, quantity: 400}
+
+# Retrieval mode (fetch_manager); each value can be overridden with a ROS parameter
+fetch:
+  confirm_with_camera: true     # read the rack's bin labels before picking
+  require_confirmation: true    # refuse to pick if no label of the right rack is seen
+  confirm_duration: 3.0         # seconds the scanner listens at the rack
+  return_to_dock_when_idle: true
+  idle_return_delay: 8.0        # seconds without orders before going back to the dock
+  max_queue: 8                  # waiting orders accepted at once
+  # robot centre -> rack face / counter edge while the arm works. The robot arrives at
+  # scan.standoff (rack) or drop_station.standoff (counter), then creeps in to these.
+  pick_standoff: 0.50
+  counter_standoff: 0.45
+
+# Audit mission (mission_manager); each value can be overridden with a ROS parameter
+mission:
+  zone_order: [C, A, B, D]      # visiting order chosen to keep the route short
+  scan_duration: 6.0            # seconds the scanner listens at each rack
+  sweep_angle: 0.35             # rad; robot sweeps +/- this while scanning (0 = off)
+  relocate_flagged: true        # carry MISPLACED / UNKNOWN items to the drop station
+  return_to_dock: true
+  nav_timeout: 180.0            # seconds per navigation goal
